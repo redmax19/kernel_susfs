@@ -1,0 +1,68 @@
+name: Test build
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+        with:
+          submodules: 'false'
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools ccache libssl-dev gawk
+          
+      - name: Download Toolchain
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/toolchain/clang-r416183b
+          curl "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/428d18d9732aa7ebfcaed87a582d86155db878d4/clang-r416183b.tar.gz" | tar --directory=${GITHUB_WORKSPACE}/toolchain/clang-r416183b --extract --gzip
+          git clone https://github.com/osm0sis/AnyKernel3.git
+
+      - name: Delete old symlink
+        run: |
+          rm -rf $GITHUB_WORKSPACE/drivers/kernelsu
+          
+      - name: Delete old KernelSU
+        run: |
+          rm -rf $GITHUB_WORKSPACE/KernelSU-Next
+          
+      - name: Run setup.sh
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/vakadavid/ReSukiSU/main/kernel/setup.sh" | bash -s main
+
+      - name: Fetch and checkout KSU at latest commit 
+        run: |
+          cd $GITHUB_WORKSPACE/KernelSU
+          git fetch
+          git checkout 691b4529dd7734746892f7f1f708ceaa3a3d44ba
+          echo
+          cd ../..
+          
+      - name: Symlink KSU kernel to drivers
+        run: |
+          ln -s $GITHUB_WORKSPACE/KernelSU/kernel/ $GITHUB_WORKSPACE/drivers/kernelsu
+          chmod +x ./drivers/kernelsu
+
+      - name: Run BBG setup
+        run: |
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+
+#      - name: Setup HymoFS
+#        run: |
+#          curl -LSs https://raw.githubusercontent.com/Anatdx/HymoFS/main/setup.sh | bash -s defconfig arch/arm64/configs/exynos9830_defconfig with-susfs
+
+      - name: Build Kernel
+        run: |
+          ./build_kernel.sh
+
+      - name: Package Kernel
+        run: bash package_kernel.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          path: r8s-Kernel3.zip
